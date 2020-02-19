@@ -22,13 +22,15 @@ def create_tf_record(file, time_interval=5, first_shape=None):
     # Get radar file from bebop
 
     grid = xr.open_dataset(file)
-    Zn = grid.snr.fillna(0).values
-    Zn = Zn/30
-    Zn = np.where(Zn > 1, 1, Zn)
+    vel = grid.mean_velocity
+    vel += 20
+    vel = vel.fillna(0)
+    vel = vel/(2*19.85)
+    vel = np.where(vel > 1, 1, vel)
 
     times = grid.time.values
     grid.close()
-    shp = Zn.shape
+    shp = vel.shape
     cur_time = times[0]
     end_time = times[-1]
 
@@ -41,7 +43,7 @@ def create_tf_record(file, time_interval=5, first_shape=None):
         else:
             next_ind = np.argmin(np.abs(next_time - times))
 
-        my_data = Zn[start_ind:next_ind, :]
+        my_data = vel[start_ind:next_ind, :]
         my_times = times[start_ind:next_ind]
         if len(my_times) == 0:
             break
@@ -56,7 +58,7 @@ def create_tf_record(file, time_interval=5, first_shape=None):
             elif my_data.shape[0] < first_shape[0]:
                 my_data = np.pad(my_data, [(0, first_shape[0]-my_data.shape[0]), (0, 0)],
                                  mode='constant')
-        dir_path = '%dmin/' % time_interval
+        dir_path = '%dmin_vel/' % time_interval
         if not os.path.exists(tfrecords_path + dir_path):
             os.makedirs(tfrecords_path + dir_path)
 
@@ -113,4 +115,4 @@ def _float_feature(value):
 
 my_files = glob.glob(lidar_files)
 for file in my_files:
-    first_shape = create_tf_record(file, 10, first_shape)
+    first_shape = create_tf_record(file, 5, first_shape)
