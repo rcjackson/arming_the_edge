@@ -10,14 +10,18 @@ This converts the data to greyscale images by:
 import sys
 import numpy as np
 import xarray as xr
-import tensorflow as tf
 import os
 import glob
 import pandas as pd
+import matplotlib.pyplot as plt
+import random
+import warnings
+import act
 
 from datetime import datetime
+warnings.filterwarnings("ignore")
 
-tfrecords_path = '/lambda_stor/data/rjackson/lidar_tfrecords/velocity/'
+tfrecords_path = '/lambda_stor/data/rjackson/lidar_pngs/'
 lidar_files = "/lambda_stor/data/rjackson/sgp_lidar/*moments*.nc"
 first_shape = None
 label_df = pd.read_csv('../notebooks/lidar_labels.csv')
@@ -51,32 +55,38 @@ def create_tf_record(file, time_interval=5, first_shape=None):
     # Get radar file from bebop
 
     grid = xr.open_dataset(file)
-    Zn = grid.snr.where(grid.snr > 1).fillna(0).values
-    Zn = Zn/30
-    Zn = np.where(Zn > 1, 1, Zn)
-
+    Zn = grid.snr.where(grid.snr > 1).values
+    Vd = grid.mean_velocity.where(grid.snr > 1).values
+    Vd = (Vd + 10) / 20.
     times = grid.time.values
     grid.close()
     shp = Zn.shape
     cur_time = times[0]
     end_time = times[-1]
-
+    
     start_ind = 0
     i = 0
     while cur_time < end_time:
         next_time = cur_time + np.timedelta64(time_interval, 'm')
+        print((next_time, end_time))
         if next_time > end_time:
             next_ind = len(times)
         else:
             next_ind = np.argmin(np.abs(next_time - times))
-
-        my_data = Zn[start_ind:next_ind, :]
+        if(start_ind >= next_ind):
+            break
+        my_data = Zn[start_ind:next_ind, :].T
+        #my_vd_data = Vd[start_ind:next_ind, :].T
+        #my_data = np.stack([
+        #    my_data, my_data, my_data], axis=2)
+        my_data = my_data
+        #my_data = my_data[:, -1:0:-1, :]
         my_times = times[start_ind:next_ind]
         if len(my_times) == 0:
             break
         cur_time = next_time
         start_ind += next_ind - start_ind + 1
-
+ 
         if first_shape is None:
             first_shape = my_data.shape
         else:
@@ -85,30 +95,41 @@ def create_tf_record(file, time_interval=5, first_shape=None):
             elif my_data.shape[0] < first_shape[0]:
                 my_data = np.pad(my_data, [(0, first_shape[0]-my_data.shape[0]), (0, 0)],
                                  mode='constant')
-        dir_path = '%dmin/' % time_interval
+        dir_path = '%dmin_snr/' % time_interval 
+        label = get_label(dt64_to_dt(my_times[0]))
+        if label == 0:
+            lab = 'clear'
+        elif label == 1:
+            lab = 'cloudy'
+        elif label == -1:
+            continue
+        else:
+            lab = 'rain' 
+        if random.random() <= 0.8:
+            which = 'training'
+        else:
+            which = 'validation'
+        dir_path = dir_path + '%s/%s/' % (which, lab)
         if not os.path.exists(tfrecords_path + dir_path):
             os.makedirs(tfrecords_path + dir_path)
 
-        fname = tfrecords_path + dir_path + file.split("/")[-1][:-3] + '%d.tfrecord' % i
-        print(fname)
-        writer = tf.io.TFRecordWriter(fname)
+        fname = tfrecords_path + dir_path + file.split("/")[-1][:-3] + '%d.png' % i
         width = first_shape[0]
         height = first_shape[1]
-        # norm = norm.SerializeToString()
-
-        label = get_label(dt64_to_dt(my_times[0]))
-        if label > -1:
-            example = tf.train.Example(features=tf.train.Features(
-                feature={
-                    'width': _int64_feature(width),
-                    'height': _int64_feature(height),
-                    'image_raw': _bytes_feature(my_data),
-                    'start_time': _float_feature(my_times[0]),
-                    'end_time': _float_feature(my_times[-1]),
-                    'label': _int64_feature(label)
-                }))
-            writer.write(example.SerializeToString())
-        i += 1
+        # norm = norm.SerializeToStri
+        fig, ax = plt.subplots(1, 1, figsize=(1*(height/width), 1))
+        #ax.imshow(my_data)
+        ax.pcolormesh(my_data, cmap='act_HomeyerRainbow', vmin=1, vmax=30)
+        ax.set_axis_off()
+        ax.margins(0, 0)
+        try:
+            fig.savefig(fname, dpi=300, bbox_inches='tight', pad_inches=0)
+        except RuntimeError:
+            plt.close(fig)
+            continue
+        plt.close(fig)
+        i = i + 1
+        del fig, ax
     return first_shape
 
 
@@ -146,4 +167,4 @@ def _float_feature(value):
 
 my_files = glob.glob(lidar_files)
 for file in my_files:
-    first_shape = create_tf_record(file, 10, first_shape)
+    first_shape = create_tf_record(file, 5, first_shape)

@@ -41,7 +41,7 @@ def main():
     labels = my_ds['time'].values
     labels = np.array([get_label(dt64_to_dt(x)) for x in labels])
     
-    print(my_ds)
+    
 
     params = {'max_depth': 7,
               'colsample_bytree': 0.8255462585030264,
@@ -55,13 +55,13 @@ def main():
               'num_class': 3,
               'verbosity': 1}
 
-    feature_list = ['snrgt5.000000']
-
+    feature_list = ['snrgt3.000000', 'snrgt5.000000']
+    print(my_ds)
     x = np.concatenate([my_ds[x].values for x in feature_list], axis=1)
     feature_labels = []
     for feat in feature_list:
-        for i in range(len(my_ds.range_bins.values)):
-            feature_labels.append('%s%d' % (feat, my_ds.range_bins[i]))
+        for i in range(len(my_ds.range_bins[0,:].values)):
+            feature_labels.append('%s%d' % (feat, my_ds.range_bins[0,i]))
 
     valid = np.where(labels > -1)[0]
     x = x[valid, :]

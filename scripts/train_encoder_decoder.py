@@ -1,9 +1,10 @@
 import tensorflow as tf
 from glob import glob
-from tensorflow.keras.layers import Input, Dense, Conv2D, Conv2DTranspose
-from tensorflow.keras.layers import Cropping2D, MaxPooling2D, UpSampling2D, ZeroPadding2D
+from tensorflow.keras.layers import Input, Dense, Conv2D, Conv2DTranspose, Flatten, BatchNormalization
+from tensorflow.keras.layers import Cropping2D, MaxPooling2D, UpSampling2D, ZeroPadding2D, ReLU
 from tensorflow.keras.models import Model
-
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 tfrecords_path = '/home/rjackson/tfrecords/2006/*'
 
@@ -48,51 +49,57 @@ def _int64_feature(value):
         value = [value]
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
+def encoder_decoder_model():
+    inp = Input(shape=(256, 128, 3), name="input")
+    #x = Conv2D(8, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(inp)
+    x = Conv2D(64, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(inp)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2))(x)
+    #x = Conv2D(16, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same',kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2))(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same',kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2))(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same',kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2))(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same',kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2))(x)
+    #x = Conv2D(32, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
+    x = Conv2D(4, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    
+    encoded = MaxPooling2D((2, 2), name="encoding")(x)
+        
+    #x = Conv2D(32, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
+    #x = UpSampling2D((2, 2))(x)
+    x = Conv2D(4, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(encoded)
+    x = ReLU()(x)
 
-def _bytes_feature(value):
-    """Creates a tf.Train.Feature from a bytes value."""
-    if value is None:
-        value = []
-    if isinstance(value, np.ndarray):
-        value = value.reshape(-1)
-        value = bytes(value)
-    if not isinstance(value, list):
-        value = [value]
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
-
-
-def _float_feature(value):
-    """Creates a tf.Train.Feature from a bytes value."""
-    if value is None:
-        value = []
-    if isinstance(value, np.ndarray):
-        value = value.reshape(-1)
-        value = bytes(value)
-    if not isinstance(value, list):
-        value = [value]
-    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-
-
-def encoder_decoder_model(ds):
-    inp = Input(shape=(None, None, 1))
-    pad_x = np.ceil(ds[0][0]['width'].numpy()[0] / 8) * 8 - ds[0][0]['width'].numpy()[0]
-    pad_y = np.ceil(ds[0][0]['height'].numpy()[0] / 8) * 8 - ds[0][0]['height'].numpy()[0]
-    x = ZeroPadding2D(((0, int(pad_x)), (0, int(pad_y))))(inp)
-    x = Conv2D(16, kernel_size=(3, 3), padding='same', activation='sigmoid')(x)
-    x = MaxPooling2D((2, 2), padding='same')(x)
-    x = Conv2D(8, kernel_size=(3, 3), padding='same', activation='sigmoid')(x)
-    x = MaxPooling2D((2, 2), padding='same')(x)
-    x = Conv2D(8, kernel_size=(3, 3), padding='same', activation='sigmoid')(x)
-    encoded = MaxPooling2D((2, 2), padding='same')(x)
-
-    x = Conv2D(8, kernel_size=(3, 3), activation='sigmoid', padding='same')(encoded)
+    #x = Conv2D(32, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
     x = UpSampling2D((2, 2))(x)
-    x = Conv2D(8, kernel_size=(3, 3), activation='sigmoid', padding='same')(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
     x = UpSampling2D((2, 2))(x)
-    x = Conv2D(16, kernel_size=(3, 3), activation='sigmoid', padding='same')(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
     x = UpSampling2D((2, 2))(x)
-    x = Cropping2D(((0, int(pad_x)), (0, int(pad_y))))(x)
-    decoded = Conv2D(1, kernel_size=(3, 3), activation='sigmoid', padding='same')(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(32, kernel_size=(3, 3), padding='same', kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+    #x = Conv2D(16, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(64, kernel_size=(3, 3), padding='same',kernel_initializer='he_normal')(x)
+    x = ReLU()(x)
+
+    #x = Conv2D(8, kernel_size=(4, 4), padding='same', activation='relu', kernel_initializer='he_normal')(x)
+    x = UpSampling2D((2, 2))(x)
+    decoded = Conv2D(3, kernel_size=(3, 3), padding='same', activation='relu', name="decoding")(x)
     return inp, encoded, decoded
 
 
@@ -100,24 +107,20 @@ if __name__ == "__main__":
     hidden_size = 5
     use_dropout = True
     num_steps = 3
-    the_shape = my_shape
-    epoch_no = int(sys.argv[1])
-    num_frames = int(sys.argv[2])
+    
+    Gen = ImageDataGenerator(rescale=1/255.)
+    dataset = Gen.flow_from_directory(
+        '/lambda_stor/data/rjackson/lidar_pngs/5min_snr/training', class_mode='input', target_size=(256, 128))
+    #mirrored_strategy = tf.distribute.MirroredStrategy()
+    inp, encoder, decoded = encoder_decoder_model()
+    model = Model(inp, decoded)
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.summary()
 
-    mirrored_strategy = tf.distribute.MirroredStrategy()
-    with tf.Session() as sess:
-        dataset = input_fn()
-        trainset = dataset.shard(2, 0)
-        testset = dataset.shard(2, 1)
-
-        inp, encoder, model = encoder_decoder_model(trainset)
-        model = Model(inp, decoded)
-        model.compile(optimizer='adam', loss='mean_squared_error')
-        model.summary()
-        dataset = input_fn()
-        checkpointer = ModelCheckpoint(
-            filepath=('/home/rjackson/DNNmodel/model-%dframes-{epoch:03d}.hdf5' % num_frames),
-            verbose=1)
-        my_model.fit(dataset, None, epochs=300, steps_per_epoch=1600, callbacks=[checkpointer], initial_epoch=epoch_no)
-
+    checkpointer = ModelCheckpoint(
+        filepath=('/homes/rjackson/encoder/encoder-decoder-{epoch:03d}.hdf5'),
+        verbose=1)
+    model.fit(dataset, epochs=2000, callbacks=[checkpointer])
+    encoder = Model(model.get_layer("input").output, model.get_layer("encoding").output)  
+    encoder.save('/homes/rjackson/encoder/encoder.hdf5')
 
