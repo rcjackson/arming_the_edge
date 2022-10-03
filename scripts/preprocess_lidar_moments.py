@@ -21,8 +21,8 @@ import act
 from datetime import datetime
 warnings.filterwarnings("ignore")
 
-tfrecords_path = '/lambda_stor/data/rjackson/lidar_pngs/'
-lidar_files = "/lambda_stor/data/rjackson/sgp_lidar/*moments*.nc"
+tfrecords_path = '/lcrc/group/earthscience/rjackson/lidar_pngs/'
+lidar_files = "/lcrc/group/earthscience/rjackson/sgp_lidar/processed_moments/*moments*.nc"
 first_shape = None
 label_df = pd.read_csv('../notebooks/lidar_labels.csv')
 
@@ -56,9 +56,9 @@ def create_tf_record(file, time_interval=5, first_shape=None):
 
     grid = xr.open_dataset(file)
     Zn = grid.snr.where(grid.snr > 1).values
-    Vd = grid.mean_velocity.where(grid.snr > 1).values
-    Vd = (Vd + 10) / 20.
     times = grid.time.values
+    ranges = grid.range.values
+    which_ranges = np.where(ranges < 8000.)[0]
     grid.close()
     shp = Zn.shape
     cur_time = times[0]
@@ -75,7 +75,7 @@ def create_tf_record(file, time_interval=5, first_shape=None):
             next_ind = np.argmin(np.abs(next_time - times))
         if(start_ind >= next_ind):
             break
-        my_data = Zn[start_ind:next_ind, :].T
+        my_data = Zn[start_ind:next_ind, 0:which_ranges[-1]].T
         #my_vd_data = Vd[start_ind:next_ind, :].T
         #my_data = np.stack([
         #    my_data, my_data, my_data], axis=2)

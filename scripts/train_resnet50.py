@@ -1,6 +1,5 @@
 import tensorflow as tf
 import numpy as np
-import sys
 
 from glob import glob
 from keras_unet.models import custom_unet
@@ -22,11 +21,8 @@ import matplotlib.image as mpimg
 import os
 
 
-def vgg(param_dict, IMG_HEIGHT=256, IMG_WIDTH=192):
-    if param_dict['model'].lower() == 'vgg19':
-        restnet = VGG19(include_top=False, weights='imagenet', input_shape=(IMG_HEIGHT,IMG_WIDTH,3))
-    elif param_dict['model'].lower() == 'resnet50':
-        restnet = ResNet50(include_top=False, weights='imagenet', input_shape=(IMG_HEIGHT,IMG_WIDTH,3))
+def vgg(param_dict, IMG_HEIGHT=256, IMG_WIDTH=128):
+    restnet = ResNet50(include_top=False, weights='imagenet', input_shape=(IMG_HEIGHT,IMG_WIDTH,3))
     restnet.summary()
     output = restnet.layers[-1].output
     output = Flatten()(output)
@@ -44,7 +40,7 @@ def vgg(param_dict, IMG_HEIGHT=256, IMG_WIDTH=192):
     return model
 
 def run(config: dict):
-    model = vgg(config)
+    model = vgg()
     model.compile(optimizer=Adam(lr=config["learning_rate"]), 
         loss='categorical_crossentropy', metrics=['accuracy'])
     model.summary()
@@ -52,28 +48,25 @@ def run(config: dict):
     train_generator = train_datagen.flow_from_directory(
         directory='/lcrc/group/earthscience/rjackson/lidar_pngs/augmented',
         class_mode='categorical', classes=['clear', 'cloudy', 'rain'],
-        target_size=(256, 192), shuffle=True, batch_size=config['batch_size'])
+        target_size=(256, 128), shuffle=True, batch_size=config['batch_size'])
 
     valid_generator = train_datagen.flow_from_directory(
         directory='/lcrc/group/earthscience/rjackson/lidar_pngs/5min_snr/validation',
         class_mode='categorical', classes=['clear', 'cloudy', 'rain'],
-        target_size=(256, 192), shuffle=True, batch_size=config['batch_size'])
+        target_size=(256, 128), shuffle=True, batch_size=config['batch_size'])
 
     checkpointer = ModelCheckpoint(
-               filepath=('/lcrc/group/earthscience/rjackson/arming_the_edge/models/%s-{epoch:03d}.hdf5' % config['model']),verbose=1)
-    early_stopping = EarlyStopping(restore_best_weights=True, patience=50,
+               filepath=('/lcrc/group/earthscience/rjackson/arming_the_edge/models/vgg19-combined-1layer-{epoch:03d}.hdf5'),verbose=1)
+    early_stopping = EarlyStopping(restore_best_weights=True, patience=300,
         monitor="val_accuracy", mode="max")
     history = model.fit(train_generator, validation_data=valid_generator,
         epochs=config['num_epochs'], callbacks=[checkpointer, early_stopping])
-    return history.history['val_acc'][-1]
+    return history.history['val_accuracy'][-1]
 
 default_config = {
         'num_epochs': 2000,
         'learning_rate': 0.001,
         'num_nodes': 512,
         'num_layers': 3,
-        'batch_size': 32,
-        'activation': 'relu',
-        'dropout': 0.3,
-        'model': sys.argv[1]}
+        'batch_size': 32}
 run(default_config)

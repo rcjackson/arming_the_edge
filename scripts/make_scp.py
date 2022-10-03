@@ -4,11 +4,11 @@ import numpy as np
 
 from glob import glob
 
-file_list = glob('/lambda_stor/data/rjackson/sgp_lidar/*moments.nc')
+file_list = glob('/lcrc/group/earthscience/rjackson/sgp_lidar/processed_moments/*moments.nc')
 
-thresholds = [1., 3., 5., 10.]
-variables = ['snr', 'mean_velocity']
-out_path = '/lambda_stor/data/rjackson/coverage_product/'
+thresholds = [1., 3., 5., 10., 20.]
+variables = ['snr', 'doppler_velocity']
+out_path = '/lcrc/group/earthscience/rjackson/sgp_lidar/coverage_product/'
 
 range_bins = np.arange(0., 12000., 60)
 snr_bins = np.arange(1., 51, 1.)
@@ -41,11 +41,11 @@ for f in file_list:
                         0, inp_ds['snr'].values[time_inds, 0:-2:2])).T
                 hist_array_vel[i] = np.squeeze(np.apply_along_axis(
                         lambda a: np.histogram(a, bins=vel_bins)[0],
-                        0, inp_ds['mean_velocity'].values[time_inds, 1:-1:2])).T
+                        0, inp_ds['doppler_velocity'].values[time_inds, 1:-1:2])).T
                 hist_array_vel[i] = hist_array_vel[i] + \
                         np.squeeze(np.apply_along_axis(
                         lambda a: np.histogram(a, bins=vel_bins)[0],
-                        0, inp_ds['mean_velocity'].values[time_inds, 0:-2:2])).T
+                        0, inp_ds['doppler_velocity'].values[time_inds, 0:-2:2])).T
                 
                 if len(time_inds) > 1:
                     mask = np.squeeze(np.where(inp_ds[v].values[time_inds, :] > t, 1, 0))

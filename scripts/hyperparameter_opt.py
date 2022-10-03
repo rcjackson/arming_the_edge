@@ -30,10 +30,10 @@ def get_label(dt):
     pct_cloud = num_cloud/len(my_strings)
     
     if num_rain > 0:
-        return 3
-    elif pct_cloud < 0.25:
+        return 2
+    elif pct_cloud < 0.5:
         return 0
-    elif pct_cloud >= 0.25 and pct_cloud <= 0.75:
+    elif pct_cloud >= 0.5:
         return 1
     else:
         return 2
@@ -45,21 +45,22 @@ def dt64_to_dt(dt):
     return datetime.utcfromtimestamp(ts)
 
 def main():
-    my_ds = xr.open_mfdataset('/lambda_stor/data/rjackson/coverage_product/*.nc')
+    my_ds = xr.open_mfdataset('/lcrc/group/earthscience/rjackson/sgp_lidar/coverage_product/*.nc')
     labels = my_ds['time'].values
     labels = np.array([get_label(dt64_to_dt(x)) for x in labels])
 
-    feature_list = ['snrgt1.000000', 'snrgt3.000000', 'snrgt5.000000']
+    feature_list = ['snrgt3.000000', 'snrgt5.000000', 'snrgt10.000000']
 
-    x = np.concatenate([my_ds[x].values for x in feature_list], axis=1)
+    x = np.concatenate([my_ds[x].values[:, :150] for x in feature_list], axis=1)
     valid = np.where(labels > -1)[0]
     x = x[valid, :]
     labels = labels[valid]
 
     feature_labels = []
     for feat in feature_list:
-        for i in range(len(my_ds.range_bins.values)):
-            feature_labels.append('%s%d' % (feat, my_ds.range_bins[i])) 
+        for i in range(len(my_ds.range_bins.values[:, :150])):
+            feature_labels.append('%s%d' % (
+                feat, i)) 
 
     print("Submitting jobs to queue...")
     
@@ -84,9 +85,9 @@ def main():
     #          'verbosity': 1}
 
     params = {'eta': hp.uniform('eta', 0.01, 1),
-              'max_depth': hp.choice('max_depth', [3, 4, 5, 6, 7, 8, 9, 10, 11]),
+              'max_depth': hp.choice('max_depth', [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
               'num_rounds': hp.choice('num_rounds', 
-                  [500, 1000, 1500, 2000, 2500, 3000]),
+                  np.arange(200, 2000, 100, dtype='int')),
               'gamma': hp.uniform('gamma', 0, 10),
               'colsample_bytree': hp.uniform('colsample_bytree', 0.4, 1),
               'subsample': hp.uniform('subsample', 0.6, 1),
@@ -94,7 +95,7 @@ def main():
               
     #dtrain = xgb.DMatrix(x_train, label=y_train, feature_names=feature_labels)
     #dtest = xgb.DMatrix(x_test, label=y_test, feature_names=feature_labels)
-    dall = xgb.DMatrix(x, label=labels, feature_names=feature_labels)
+    dall = xgb.DMatrix(x, label=labels)
     num_rounds = 10000
 
     def lr(boosting_round, num_boost_round):
@@ -107,17 +108,15 @@ def main():
                   'max_depth': x['max_depth'],
                   'num_parallel_tree': 1,
                   'objective': 'multi:softmax',
-                  'num_class': 4,
+                  'num_class': 3,
                   'tree_method': 'gpu_hist',
-                  'gpu_id': 1,
                   'colsample_bytree': x['colsample_bytree'],
                   'subsample': x['subsample'],
                   'gamma': x['gamma'],
                   'verbosity': 0}
 
         res = xgb.cv(params, dall, nfold=5,
-                     num_boost_round=x['num_rounds'],
-                     callbacks=[xgb.callback.print_evaluation(1)])
+                     num_boost_round=x['num_rounds'])
         return {'loss': res['test-merror-mean'].min(), 'status': STATUS_OK}
 
     trials = Trials()

@@ -3,12 +3,11 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 import dask.array as da
+import sys
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from datetime import datetime
-from dask_cuda import LocalCUDACluster
-from distributed import Client
 
 label_df = pd.read_csv('../notebooks/lidar_labels.csv')
 
@@ -37,35 +36,38 @@ def dt64_to_dt(dt):
     return datetime.utcfromtimestamp(ts)
 
 def main():
-    my_ds = xr.open_mfdataset('/lambda_stor/data/rjackson/coverage_product/*.nc')
+    my_ds = xr.open_mfdataset('/lcrc/group/earthscience/rjackson/sgp_lidar/coverage_product/*.nc')
     labels = my_ds['time'].values
     labels = np.array([get_label(dt64_to_dt(x)) for x in labels])
     
     
+#{'colsample_bytree': 0.9591286458914207, 'eta': 0.26652131138562396, 'gamma': 2.6546371902167016, 'max_depth': 9, 'num_rounds': 2, 'subsample': 0.9255120113394381}
 
-    params = {'max_depth': 7,
-              'colsample_bytree': 0.8255462585030264,
-              'subsample': 0.7447996972336599,
-              'gpu_id': 2,
-              'eta': 0.040185143425568594,
-              'gamma': 0.0007169742257061122,
+    params = {'max_depth': 11,
+              'colsample_bytree': 0.95128645814207,
+              'subsample': 0.9255120113394381,
+              'eta': 0.26652131138562396,
+              'gamma': 2.6546371902167016,
               'num_parallel_tree': 1,
               'tree_method': 'gpu_hist',
               'objective': 'multi:softmax',
               'num_class': 3,
               'verbosity': 1}
-
-    feature_list = ['snrgt3.000000', 'snrgt5.000000']
+    feature_list = []
+    for c in sys.argv[1:]:
+        feature_list.append('snrgt%s.000000' % c)
+    print(feature_list)
     print(my_ds)
-    x = np.concatenate([my_ds[x].values for x in feature_list], axis=1)
+    x = np.concatenate([my_ds[x].values[:, :150] for x in feature_list], axis=1)
     feature_labels = []
     for feat in feature_list:
-        for i in range(len(my_ds.range_bins[0,:].values)):
+        for i in range(len(my_ds.range_bins[0,:150].values)):
             feature_labels.append('%s%d' % (feat, my_ds.range_bins[0,i]))
 
     valid = np.where(labels > -1)[0]
     x = x[valid, :]
     labels = labels[valid]
+    print('%d valid points' % len(labels))
 
     x_train, x_test, y_train, y_test = train_test_split(x, labels, test_size=0.20)
     print(x_train.shape, y_train.shape)
